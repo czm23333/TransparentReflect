@@ -6,6 +6,7 @@ import io.github.czm23333.TransparentReflect.annotations.ShadowGetter;
 import io.github.czm23333.TransparentReflect.annotations.ShadowOverride;
 import io.github.czm23333.TransparentReflect.annotations.ShadowSetter;
 import io.github.czm23333.TransparentReflect.internal.ShadowInterface;
+import javassist.CannotCompileException;
 import javassist.ClassPool;
 import javassist.CtClass;
 import javassist.CtConstructor;
@@ -28,6 +29,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 
 public class ShadowManager {
     public static final Directory root = new Directory();
@@ -99,14 +101,14 @@ public class ShadowManager {
         return insertCode.toString();
     }
 
-    public static void initShadow(Class<?> neighbor) throws Throwable {
+    public static void initShadow(ClassLoader cl, String packageName, Consumer<CtClass> definer) throws Throwable {
         ClassPool cp = new ClassPool();
-        cp.appendClassPath(new LoaderClassPath(neighbor.getClassLoader()));
+        cp.appendClassPath(new LoaderClassPath(cl));
 
         CtClass shadowInterface = cp.getCtClass(ShadowInterface.class.getName());
         CtClass objectClass = cp.getCtClass(Object.class.getName());
 
-        Set<String> annotated = scan(Shadow.class, neighbor.getPackageName());
+        Set<String> annotated = scan(Shadow.class, packageName);
 
         HashMap<CtClass, Class<?>> tempTargetMap = new HashMap<>();
         for (String name : annotated) {
@@ -232,11 +234,11 @@ public class ShadowManager {
             CtClass cur = tempClass.iterator().next();
             while (cur.getSuperclass() != objectClass && tempClass.contains(cur.getSuperclass()))
                 cur = cur.getSuperclass();
-            cur.toClass(neighbor);
+            definer.accept(cur);
             tempClass.remove(cur);
         }
 
-        annotated = scan(ShadowExtend.class, neighbor.getPackageName());
+        annotated = scan(ShadowExtend.class, packageName);
         for (String name : annotated) {
             CtClass ctClass = cp.getCtClass(name);
             ShadowExtend shadowAnnotation = (ShadowExtend) ctClass.getAnnotation(ShadowExtend.class);
@@ -296,7 +298,31 @@ public class ShadowManager {
                 } else if (method.hasAnnotation(ShadowOverride.class))
                     method.setName(ShadowManager.indexTo(((ShadowOverride) method.getAnnotation(ShadowOverride.class)).value()));
             }
-            ctClass.toClass(neighbor);
+            definer.accept(ctClass);
         }
+    }
+
+    public static void initShadow(Class<?> neighbor) throws Throwable {
+        initShadow(neighbor.getClassLoader(), neighbor.getPackageName(), cc -> {
+            try {
+                cc.toClass(neighbor);
+            } catch (CannotCompileException e) {
+                e.printStackTrace();
+            }
+        });
+    }
+
+    /**
+     * It doesn't work on Java 16 and higher.
+     */
+    @Deprecated
+    public static void initShadow(ClassLoader cl, String packageName) throws Throwable {
+        initShadow(cl, packageName, cc -> {
+            try {
+                cc.toClass(cl, null);
+            } catch (CannotCompileException e) {
+                e.printStackTrace();
+            }
+        });
     }
 }
