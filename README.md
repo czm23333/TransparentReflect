@@ -28,7 +28,7 @@ Like this:
 public class ShadowTarget {}
 ```
 
-Then you can add shadow methods using @ShadowMethod, shadow getters using @ShadowGetter, shadow setters using @ShadowSetter and shadow constructors in no need of annotations. These annotations are used just like @Shadow.
+Then you can add shadow methods using @Shadow, shadow getters using @ShadowGetter, shadow setters using @ShadowSetter and shadow constructors in no need of annotations. These annotations are used just like @Shadow on classes.
 
 Shadow classes can extend each other if their actual classes also match those relationships.
 
@@ -44,7 +44,7 @@ You need to create a shadow class with a @ShadowExtend annotation instead of a @
 
 Then declare shadow override methods with @ShadowOverride annotations to override methods declared in the actual class.
 
-You can still use @ShadowMethod, @ShadowGetter and @ShadowSetter. They can access protected members now.
+You can still use @Shadow, @ShadowGetter and @ShadowSetter. They can access protected members now.
 
 ### Static Routes
 The string you passed to the annotation is actually a path seperated by **/**. You can set static routes before you call ShadowManager.initShadow to dynamically select targets at runtime.
