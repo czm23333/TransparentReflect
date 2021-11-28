@@ -15,6 +15,8 @@ Specifically, this framework supports:
 ## Usage
 You can find code examples in src/io/github/czm23333/TransparentReflect/example.
 
+For more information, please refer to the code examples.
+
 ### Create And Access Classes And Objects
 #### Class Defination
 To achieve this goal, you need to create a shadow class with a @Shadow annotation describing the actual class you want.
@@ -47,11 +49,7 @@ You can still use @ShadowMethod, @ShadowGetter and @ShadowSetter. They can acces
 ### Static Routes
 The string you passed to the annotation is actually a path seperated by **/**. You can set static routes before you call ShadowManager.initShadow to dynamically select targets at runtime.
 
-For more information, please refer to the code examples.
-
 ### Link Shadow Classes With Actual Classes
 Before you use any shadow classes, call ShadowManager.initShadow.
 
 After this step you are able to use your shadow classes as if you were using the actual classes.
-
-For more information, please refer to the code examples.
