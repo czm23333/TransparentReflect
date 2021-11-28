@@ -24,5 +24,8 @@ public class Main {
         shadow.m1();
         extend.s1(5);
         System.out.println(extend.s2());
+
+        ShadowExtendRef2 extend2 = new ShadowExtendRef2();
+        new ShadowRef2(extend2).m1(new ShadowRef(1)).m1();
     }
 }
