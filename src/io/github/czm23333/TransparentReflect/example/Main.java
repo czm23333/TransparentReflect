@@ -4,7 +4,7 @@ import io.github.czm23333.TransparentReflect.ShadowManager;
 
 public class Main {
     public static void main(String[] args) throws Throwable {
-        ShadowManager.root.createSubDirectory("cur", "io.github.czm23333.TransparentReflect.example");
+        ShadowManager.root.makeSubDirectory("cur", "io.github.czm23333.TransparentReflect.example");
         ShadowManager.initShadow(Main.class);
 
         ShadowRef shadow = new ShadowRef(1);

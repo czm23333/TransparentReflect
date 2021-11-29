@@ -31,7 +31,7 @@ public class Directory {
         return subDirectories.get(path);
     }
 
-    public void createSubDirectory(String path, String realPath) {
+    public void makeSubDirectory(String path, String realPath) {
         if (hasSubDirectory(path))
             throw new IllegalStateException("Sub directory already exists");
         subDirectories.put(path, new Directory(realPath));
