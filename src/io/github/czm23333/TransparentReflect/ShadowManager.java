@@ -258,7 +258,12 @@ public class ShadowManager {
                         String fieldName = ShadowManager.indexTo(shadowAnnotation.value());
                         CtClass retType = method.getReturnType();
                         if (method.getParameterTypes().length != 0 ||
-                            !shadowTarget.getDeclaredField(fieldName).getType().getName().equals(retType.getName()))
+                            !shadowTarget.getDeclaredField(fieldName)
+                                    .getType()
+                                    .getName()
+                                    .equals(tempTargetMap.containsKey(retType) ?
+                                            tempTargetMap.get(retType).getName() :
+                                            retType.getName()))
                             throw new IllegalArgumentException("Invalid getter");
                         if (tempTargetMap.containsKey(retType))
                             method.setBody("return new " +
@@ -277,7 +282,12 @@ public class ShadowManager {
                         if (para.length != 1 || method.getReturnType() != CtClass.voidType)
                             throw new IllegalArgumentException("Invalid setter");
                         String fieldName = ShadowManager.indexTo(shadowAnnotation.value());
-                        if (!shadowTarget.getDeclaredField(fieldName).getType().getName().equals(para[0].getName()))
+                        if (!shadowTarget.getDeclaredField(fieldName)
+                                .getType()
+                                .getName()
+                                .equals(tempTargetMap.containsKey(para[0]) ?
+                                        tempTargetMap.get(para[0]).getName() :
+                                        para[0].getName()))
                             throw new IllegalArgumentException("Invalid setter");
                         if (tempTargetMap.containsKey(para[0]))
                             method.setBody(belong +
@@ -377,7 +387,12 @@ public class ShadowManager {
                         String fieldName = ShadowManager.indexTo(((ShadowGetter) method.getAnnotation(ShadowGetter.class)).value());
                         CtClass retType = method.getReturnType();
                         if (method.getParameterTypes().length != 0 ||
-                            !shadowTarget.getDeclaredField(fieldName).getType().getName().equals(retType.getName()))
+                            !shadowTarget.getDeclaredField(fieldName)
+                                    .getType()
+                                    .getName()
+                                    .equals(tempTargetMap.containsKey(retType) ?
+                                            tempTargetMap.get(retType).getName() :
+                                            retType.getName()))
                             throw new IllegalArgumentException("Invalid getter");
                         if (tempTargetMap.containsKey(retType))
                             method.setBody("return new " +
@@ -394,7 +409,12 @@ public class ShadowManager {
                         if (para.length != 1 || method.getReturnType() != CtClass.voidType)
                             throw new IllegalArgumentException("Invalid setter");
                         String fieldName = ShadowManager.indexTo(((ShadowSetter) method.getAnnotation(ShadowSetter.class)).value());
-                        if (!shadowTarget.getDeclaredField(fieldName).getType().getName().equals(para[0].getName()))
+                        if (!shadowTarget.getDeclaredField(fieldName)
+                                .getType()
+                                .getName()
+                                .equals(tempTargetMap.containsKey(para[0]) ?
+                                        tempTargetMap.get(para[0]).getName() :
+                                        para[0].getName()))
                             throw new IllegalArgumentException("Invalid setter");
                         if (tempTargetMap.containsKey(para[0]))
                             method.setBody(belong +
