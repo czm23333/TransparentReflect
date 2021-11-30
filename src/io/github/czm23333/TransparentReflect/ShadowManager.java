@@ -27,7 +27,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -139,7 +138,7 @@ public class ShadowManager {
             Shadow shadowAnnotation = (Shadow) ctClass.getAnnotation(Shadow.class);
             Class<?> shadowTarget = ShadowManager.indexToClass(shadowAnnotation.value());
 
-            ArrayList<CtClass> interfaces = new ArrayList<>(List.of(ctClass.getInterfaces()));
+            ArrayList<CtClass> interfaces = new ArrayList<>(Arrays.asList(ctClass.getInterfaces()));
             interfaces.add(shadowInterface);
             ctClass.setInterfaces(interfaces.toArray(new CtClass[0]));
             ctClass.addField(new CtField(cp.getCtClass(shadowTarget.getName()), "__realObject", ctClass));
@@ -429,36 +428,45 @@ public class ShadowManager {
                             method.setBody(belong + '.' + fieldName + "=$1;");
                     } else if (method.hasAnnotation(ShadowOverride.class)) {
                         String targetName = ShadowManager.indexTo(((ShadowOverride) method.getAnnotation(ShadowOverride.class)).value());
-                        String newName = targetName + "__internal_override";
-                        method.setName(newName);
                         CtClass retType = method.getReturnType();
                         CtClass[] para = method.getParameterTypes();
-                        CtMethod newMethod = new CtMethod(tempTargetMap.containsKey(retType) ?
-                                                          cp.getCtClass(tempTargetMap.get(retType).getName()) :
-                                                          retType, targetName, Arrays.stream(para).map(cc -> {
-                            try {
-                                return tempTargetMap.containsKey(cc) ?
-                                       cp.getCtClass(tempTargetMap.get(cc).getName()) :
-                                       cc;
-                            } catch (NotFoundException e) {
-                                throw new RuntimeException(e);
-                            }
-                        }).toArray(CtClass[]::new), ctClass);
-                        if (retType == CtClass.voidType)
-                            newMethod.setBody(newName + '(' + perfectBackward(tempTargetMap, para) + ");");
-                        else if (tempTargetMap.containsKey(retType))
-                            newMethod.setBody("return (" +
-                                              tempTargetMap.get(retType).getName() +
-                                              ")(((" +
-                                              ShadowInterface.class.getName() +
-                                              ")(" +
-                                              newName +
-                                              '(' +
-                                              perfectBackward(tempTargetMap, para) +
-                                              "))).getRealObject());");
-                        else
-                            newMethod.setBody("return " + newName + '(' + perfectBackward(tempTargetMap, para) + ");");
-                        ctClass.addMethod(newMethod);
+                        if (Arrays.stream(para).noneMatch(tempTargetMap::containsKey) && !tempTargetMap.containsKey(
+                                retType)) {
+                            method.setName(targetName);
+                        } else {
+                            String newName = targetName + "__internal_override";
+                            method.setName(targetName);
+                            CtMethod newMethod = new CtMethod(tempTargetMap.containsKey(retType) ?
+                                                              cp.getCtClass(tempTargetMap.get(retType).getName()) :
+                                                              retType, newName, Arrays.stream(para).map(cc -> {
+                                try {
+                                    return tempTargetMap.containsKey(cc) ? cp.getCtClass(tempTargetMap.get(cc)
+                                                                                                 .getName()) : cc;
+                                } catch (NotFoundException e) {
+                                    throw new RuntimeException(e);
+                                }
+                            }).toArray(CtClass[]::new), ctClass);
+                            if (retType == CtClass.voidType)
+                                newMethod.setBody(targetName + '(' + perfectBackward(tempTargetMap, para) + ");");
+                            else if (tempTargetMap.containsKey(retType))
+                                newMethod.setBody("return (" +
+                                                  tempTargetMap.get(retType).getName() +
+                                                  ")(((" +
+                                                  ShadowInterface.class.getName() +
+                                                  ")(" +
+                                                  targetName +
+                                                  '(' +
+                                                  perfectBackward(tempTargetMap, para) +
+                                                  "))).getRealObject());");
+                            else
+                                newMethod.setBody("return " +
+                                                  targetName +
+                                                  '(' +
+                                                  perfectBackward(tempTargetMap, para) +
+                                                  ");");
+                            newMethod.setName(targetName);
+                            ctClass.addMethod(newMethod);
+                        }
                     }
                 } catch (Throwable t) {
                     if (!silent)
@@ -475,7 +483,7 @@ public class ShadowManager {
     }
 
     public static void initShadow(Class<?> neighbor, boolean silent) throws NotFoundException, CannotCompileException, ClassNotFoundException {
-        initShadow(neighbor.getClassLoader(), neighbor.getPackageName(), cc -> {
+        initShadow(neighbor.getClassLoader(), neighbor.getPackage().getName(), cc -> {
             try {
                 cc.toClass(neighbor);
             } catch (CannotCompileException e) {
