@@ -1,11 +1,11 @@
-package io.github.czm23333.TransparentReflect;
+package io.github.czm23333.transparentreflect;
 
-import io.github.czm23333.TransparentReflect.annotations.Shadow;
-import io.github.czm23333.TransparentReflect.annotations.ShadowExtend;
-import io.github.czm23333.TransparentReflect.annotations.ShadowGetter;
-import io.github.czm23333.TransparentReflect.annotations.ShadowOverride;
-import io.github.czm23333.TransparentReflect.annotations.ShadowSetter;
-import io.github.czm23333.TransparentReflect.internal.ShadowInterface;
+import io.github.czm23333.transparentreflect.annotations.Shadow;
+import io.github.czm23333.transparentreflect.annotations.ShadowExtend;
+import io.github.czm23333.transparentreflect.annotations.ShadowGetter;
+import io.github.czm23333.transparentreflect.annotations.ShadowOverride;
+import io.github.czm23333.transparentreflect.annotations.ShadowSetter;
+import io.github.czm23333.transparentreflect.internal.ShadowInterface;
 import javassist.CannotCompileException;
 import javassist.ClassPool;
 import javassist.CtClass;

@@ -1,4 +1,4 @@
-package io.github.czm23333.TransparentReflect;
+package io.github.czm23333.transparentreflect;
 
 import java.util.HashMap;
 import java.util.Objects;

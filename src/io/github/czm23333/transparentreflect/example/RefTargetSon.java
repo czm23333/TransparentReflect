@@ -1,4 +1,4 @@
-package io.github.czm23333.TransparentReflect.example;
+package io.github.czm23333.transparentreflect.example;
 
 public class RefTargetSon extends RefTarget {
     public RefTargetSon(int i) {

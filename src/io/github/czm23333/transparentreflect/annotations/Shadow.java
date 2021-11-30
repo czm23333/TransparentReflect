@@ -1,12 +1,12 @@
-package io.github.czm23333.TransparentReflect.annotations;
+package io.github.czm23333.transparentreflect.annotations;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
-@Target(ElementType.TYPE)
+@Target({ElementType.TYPE, ElementType.METHOD})
 @Retention(RetentionPolicy.RUNTIME)
-public @interface ShadowExtend {
+public @interface Shadow {
     String value();
 }

@@ -1,10 +1,10 @@
-package io.github.czm23333.TransparentReflect.example;
+package io.github.czm23333.transparentreflect.example;
 
-import io.github.czm23333.TransparentReflect.ShadowManager;
+import io.github.czm23333.transparentreflect.ShadowManager;
 
 public class Main {
     public static void main(String[] args) throws Throwable {
-        ShadowManager.root.makeSubDirectory("cur", "io.github.czm23333.TransparentReflect.example");
+        ShadowManager.root.makeSubDirectory("cur", "io.github.czm23333.transparentreflect.example");
         ShadowManager.initShadow(Main.class);
 
         ShadowRef shadow = new ShadowRef(1);

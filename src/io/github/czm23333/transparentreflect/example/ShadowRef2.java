@@ -1,6 +1,6 @@
-package io.github.czm23333.TransparentReflect.example;
+package io.github.czm23333.transparentreflect.example;
 
-import io.github.czm23333.TransparentReflect.annotations.Shadow;
+import io.github.czm23333.transparentreflect.annotations.Shadow;
 
 @Shadow("cur/RefTarget2")
 public class ShadowRef2 {

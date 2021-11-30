@@ -1,4 +1,4 @@
-package io.github.czm23333.TransparentReflect.annotations;
+package io.github.czm23333.transparentreflect.annotations;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;

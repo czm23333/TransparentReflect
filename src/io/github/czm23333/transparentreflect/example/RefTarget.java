@@ -1,4 +1,4 @@
-package io.github.czm23333.TransparentReflect.example;
+package io.github.czm23333.transparentreflect.example;
 
 public class RefTarget {
     private final int i1;

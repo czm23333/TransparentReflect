@@ -1,9 +1,9 @@
-package io.github.czm23333.TransparentReflect.example;
+package io.github.czm23333.transparentreflect.example;
 
-import io.github.czm23333.TransparentReflect.annotations.Shadow;
-import io.github.czm23333.TransparentReflect.annotations.ShadowExtend;
-import io.github.czm23333.TransparentReflect.annotations.ShadowOverride;
-import io.github.czm23333.TransparentReflect.annotations.ShadowSetter;
+import io.github.czm23333.transparentreflect.annotations.Shadow;
+import io.github.czm23333.transparentreflect.annotations.ShadowExtend;
+import io.github.czm23333.transparentreflect.annotations.ShadowOverride;
+import io.github.czm23333.transparentreflect.annotations.ShadowSetter;
 
 @ShadowExtend("cur/RefTarget")
 public class ShadowExtendRef {
