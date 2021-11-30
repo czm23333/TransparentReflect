@@ -18,9 +18,11 @@ import javassist.NotFoundException;
 import javassist.bytecode.CodeAttribute;
 import javassist.bytecode.CodeIterator;
 import javassist.bytecode.MethodInfo;
+import javassist.util.proxy.DefineClassHelper;
 import org.reflections.Reflections;
 import org.reflections.scanners.Scanners;
 import org.reflections.util.ConfigurationBuilder;
+import org.reflections.util.FilterBuilder;
 
 import java.lang.annotation.Annotation;
 import java.util.ArrayList;
@@ -67,6 +69,7 @@ public class ShadowManager {
 
     private static Set<String> scan(Class<? extends Annotation> annotation, String pack) {
         Reflections reflections = new Reflections(new ConfigurationBuilder().forPackages(pack)
+                                                          .setInputsFilter(new FilterBuilder().includePackage(pack))
                                                           .setExpandSuperTypes(false));
         return reflections.get(Scanners.SubTypes.of(Scanners.TypesAnnotated.with(annotation)));
     }
@@ -125,6 +128,7 @@ public class ShadowManager {
 
     public static void initShadow(ClassLoader cl, String packageName, Consumer<CtClass> definer, boolean silent) throws NotFoundException, ClassNotFoundException, CannotCompileException {
         ClassPool cp = new ClassPool();
+        cp.appendSystemPath();
         cp.appendClassPath(new LoaderClassPath(cl));
 
         CtClass shadowInterface = cp.getCtClass(ShadowInterface.class.getName());
@@ -172,7 +176,7 @@ public class ShadowManager {
                 else
                     throw new IllegalArgumentException("Invalid superclass");
             }
-            for (CtConstructor constructor : ctClass.getConstructors()) {
+            for (CtConstructor constructor : ctClass.getDeclaredConstructors()) {
                 try {
                     constructor.setBody(defBody);
 
@@ -181,8 +185,7 @@ public class ShadowManager {
                         if (Arrays.stream(shadowTarget.getConstructors()).anyMatch(c -> c.getParameterCount() == 1 &&
                                                                                         c.getParameterTypes()[0] ==
                                                                                         Object.class))
-                            constructor.insertAfter("if($1 instanceof " +
-                                                    shadowTarget.getName() +
+                            constructor.insertAfter("if($1 instanceof " + shadowTarget.getName() +
                                                     ") $0.__realObject = (" +
                                                     shadowTarget.getName() +
                                                     ")$1; else $0.__realObject = new " +
@@ -208,9 +211,7 @@ public class ShadowManager {
                 }
             }
 
-            for (CtMethod method : ctClass.getMethods()) {
-                if (method.getDeclaringClass() != ctClass)
-                    continue;
+            for (CtMethod method : ctClass.getDeclaredMethods()) {
                 try {
                     String belong = Modifier.isStatic(method.getModifiers()) ?
                                     shadowTarget.getName() :
@@ -324,7 +325,7 @@ public class ShadowManager {
             Class<?> shadowTarget = ShadowManager.indexToClass(shadowAnnotation.value());
             ctClass.setSuperclass(cp.getCtClass(shadowTarget.getName()));
 
-            for (CtConstructor constructor : ctClass.getConstructors()) {
+            for (CtConstructor constructor : ctClass.getDeclaredConstructors()) {
                 try {
                     CtClass[] para = constructor.getParameterTypes();
                     MethodInfo methodInfo = constructor.getMethodInfo();
@@ -347,9 +348,7 @@ public class ShadowManager {
                 }
             }
 
-            for (CtMethod method : ctClass.getMethods()) {
-                if (method.getDeclaringClass() != ctClass)
-                    continue;
+            for (CtMethod method : ctClass.getDeclaredMethods()) {
                 try {
                     String belong = Modifier.isStatic(method.getModifiers()) ? shadowTarget.getName() : "super";
                     if (method.hasAnnotation(Shadow.class)) {
@@ -358,8 +357,7 @@ public class ShadowManager {
 
                         CtClass retType = method.getReturnType();
                         if (retType == CtClass.voidType)
-                            method.setBody(belong +
-                                           '.' +
+                            method.setBody(belong + '.' +
                                            methodName +
                                            '(' +
                                            perfectForward(tempTargetMap, para) +
@@ -430,43 +428,38 @@ public class ShadowManager {
                         String targetName = ShadowManager.indexTo(((ShadowOverride) method.getAnnotation(ShadowOverride.class)).value());
                         CtClass retType = method.getReturnType();
                         CtClass[] para = method.getParameterTypes();
-                        if (Arrays.stream(para).noneMatch(tempTargetMap::containsKey) && !tempTargetMap.containsKey(
-                                retType)) {
-                            method.setName(targetName);
-                        } else {
-                            String newName = targetName + "__internal_override";
-                            method.setName(targetName);
-                            CtMethod newMethod = new CtMethod(tempTargetMap.containsKey(retType) ?
-                                                              cp.getCtClass(tempTargetMap.get(retType).getName()) :
-                                                              retType, newName, Arrays.stream(para).map(cc -> {
-                                try {
-                                    return tempTargetMap.containsKey(cc) ? cp.getCtClass(tempTargetMap.get(cc)
-                                                                                                 .getName()) : cc;
-                                } catch (NotFoundException e) {
-                                    throw new RuntimeException(e);
-                                }
-                            }).toArray(CtClass[]::new), ctClass);
-                            if (retType == CtClass.voidType)
-                                newMethod.setBody(targetName + '(' + perfectBackward(tempTargetMap, para) + ");");
-                            else if (tempTargetMap.containsKey(retType))
-                                newMethod.setBody("return (" +
-                                                  tempTargetMap.get(retType).getName() +
-                                                  ")(((" +
-                                                  ShadowInterface.class.getName() +
-                                                  ")(" +
-                                                  targetName +
-                                                  '(' +
-                                                  perfectBackward(tempTargetMap, para) +
-                                                  "))).getRealObject());");
-                            else
-                                newMethod.setBody("return " +
-                                                  targetName +
-                                                  '(' +
-                                                  perfectBackward(tempTargetMap, para) +
-                                                  ");");
-                            newMethod.setName(targetName);
-                            ctClass.addMethod(newMethod);
-                        }
+                        CtMethod newMethod = new CtMethod(tempTargetMap.containsKey(retType) ?
+                                                          cp.getCtClass(tempTargetMap.get(retType).getName()) :
+                                                          retType, targetName + "__internal_override", Arrays.stream(
+                                para).map(cc -> {
+                            try {
+                                return tempTargetMap.containsKey(cc) ?
+                                       cp.getCtClass(tempTargetMap.get(cc).getName()) :
+                                       cc;
+                            } catch (NotFoundException e) {
+                                throw new RuntimeException(e);
+                            }
+                        }).toArray(CtClass[]::new), ctClass);
+                        if (retType == CtClass.voidType)
+                            newMethod.setBody(method.getName() + '(' + perfectBackward(tempTargetMap, para) + ");");
+                        else if (tempTargetMap.containsKey(retType))
+                            newMethod.setBody("return (" +
+                                              tempTargetMap.get(retType).getName() +
+                                              ")(((" +
+                                              ShadowInterface.class.getName() +
+                                              ")(" +
+                                              method.getName() +
+                                              '(' +
+                                              perfectBackward(tempTargetMap, para) +
+                                              "))).getRealObject());");
+                        else
+                            newMethod.setBody("return " +
+                                              method.getName() +
+                                              '(' +
+                                              perfectBackward(tempTargetMap, para) +
+                                              ");");
+                        newMethod.setName(targetName);
+                        ctClass.addMethod(newMethod);
                     }
                 } catch (Throwable t) {
                     if (!silent)
@@ -485,8 +478,8 @@ public class ShadowManager {
     public static void initShadow(Class<?> neighbor, boolean silent) throws NotFoundException, CannotCompileException, ClassNotFoundException {
         initShadow(neighbor.getClassLoader(), neighbor.getPackage().getName(), cc -> {
             try {
-                cc.toClass(neighbor);
-            } catch (CannotCompileException e) {
+                DefineClassHelper.toClass(cc.getName(), neighbor, neighbor.getClassLoader(), null, cc.toBytecode());
+            } catch (Exception e) {
                 e.printStackTrace();
             }
         }, silent);
