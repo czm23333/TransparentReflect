@@ -36,6 +36,8 @@ import java.util.function.Consumer;
 public class ShadowManager {
     public static final Directory root = new Directory();
 
+    private static final HashMap<String, Class<?>> shadowTargetMap = new HashMap<>();
+
     public static Class<?> indexToClass(String path) throws ClassNotFoundException {
         String[] parts = path.split("/");
         StringBuilder result = new StringBuilder();
@@ -74,15 +76,15 @@ public class ShadowManager {
         return reflections.get(Scanners.SubTypes.of(Scanners.TypesAnnotated.with(annotation)));
     }
 
-    private static String perfectForward(HashMap<CtClass, Class<?>> tempTargetMap, CtClass[] para) {
+    private static String perfectForward(CtClass[] para) {
         StringBuilder insertCode = new StringBuilder();
         for (int i = 1; i <= para.length; ++i) {
             CtClass paraClass = para[i - 1];
-            if (tempTargetMap.containsKey(paraClass)) {
+            if (shadowTargetMap.containsKey(paraClass.getName())) {
                 insertCode.append('(');
 
                 insertCode.append('(');
-                insertCode.append(tempTargetMap.get(paraClass).getName());
+                insertCode.append(shadowTargetMap.get(paraClass.getName()).getName());
                 insertCode.append(')');
 
                 insertCode.append("(((");
@@ -104,11 +106,11 @@ public class ShadowManager {
         return insertCode.toString();
     }
 
-    private static String perfectBackward(HashMap<CtClass, Class<?>> tempTargetMap, CtClass[] para) {
+    private static String perfectBackward(CtClass[] para) {
         StringBuilder insertCode = new StringBuilder();
         for (int i = 1; i <= para.length; ++i) {
             CtClass paraClass = para[i - 1];
-            if (tempTargetMap.containsKey(paraClass)) {
+            if (shadowTargetMap.containsKey(paraClass.getName())) {
                 insertCode.append("new ");
                 insertCode.append(paraClass.getName());
                 insertCode.append('(');
@@ -148,6 +150,7 @@ public class ShadowManager {
             ctClass.addField(new CtField(cp.getCtClass(shadowTarget.getName()), "__realObject", ctClass));
             ctClass.addMethod(CtMethod.make("public Object getRealObject(){return this.__realObject;}", ctClass));
 
+            shadowTargetMap.put(name, shadowTarget);
             tempTargetMap.put(ctClass, shadowTarget);
         }
 
@@ -185,7 +188,8 @@ public class ShadowManager {
                         if (Arrays.stream(shadowTarget.getConstructors()).anyMatch(c -> c.getParameterCount() == 1 &&
                                                                                         c.getParameterTypes()[0] ==
                                                                                         Object.class))
-                            constructor.insertAfter("if($1 instanceof " + shadowTarget.getName() +
+                            constructor.insertAfter("if($1 instanceof " +
+                                                    shadowTarget.getName() +
                                                     ") $0.__realObject = (" +
                                                     shadowTarget.getName() +
                                                     ")$1; else $0.__realObject = new " +
@@ -201,7 +205,7 @@ public class ShadowManager {
                         constructor.insertAfter("$0.__realObject = new " +
                                                 shadowTarget.getName() +
                                                 '(' +
-                                                perfectForward(tempTargetMap, para) +
+                                                perfectForward(para) +
                                                 ");", true);
                     }
                 } catch (Throwable t) {
@@ -228,13 +232,8 @@ public class ShadowManager {
 
                         CtClass retType = method.getReturnType();
                         if (retType == CtClass.voidType)
-                            method.setBody(belong +
-                                           '.' +
-                                           methodName +
-                                           '(' +
-                                           perfectForward(tempTargetMap, para) +
-                                           ");");
-                        else if (tempTargetMap.containsKey(retType))
+                            method.setBody(belong + '.' + methodName + '(' + perfectForward(para) + ");");
+                        else if (shadowTargetMap.containsKey(retType.getName()))
                             method.setBody("return new " +
                                            retType.getName() +
                                            "((Object)(" +
@@ -242,16 +241,10 @@ public class ShadowManager {
                                            '.' +
                                            methodName +
                                            '(' +
-                                           perfectForward(tempTargetMap, para) +
+                                           perfectForward(para) +
                                            ")));");
                         else
-                            method.setBody("return " +
-                                           belong +
-                                           '.' +
-                                           methodName +
-                                           '(' +
-                                           perfectForward(tempTargetMap, para) +
-                                           ");");
+                            method.setBody("return " + belong + '.' + methodName + '(' + perfectForward(para) + ");");
                     } else if (method.hasAnnotation(ShadowGetter.class)) {
                         ShadowGetter shadowAnnotation = (ShadowGetter) method.getAnnotation(ShadowGetter.class);
 
@@ -261,11 +254,11 @@ public class ShadowManager {
                             !shadowTarget.getDeclaredField(fieldName)
                                     .getType()
                                     .getName()
-                                    .equals(tempTargetMap.containsKey(retType) ?
-                                            tempTargetMap.get(retType).getName() :
+                                    .equals(shadowTargetMap.containsKey(retType.getName()) ?
+                                            shadowTargetMap.get(retType.getName()).getName() :
                                             retType.getName()))
                             throw new IllegalArgumentException("Invalid getter");
-                        if (tempTargetMap.containsKey(retType))
+                        if (shadowTargetMap.containsKey(retType.getName()))
                             method.setBody("return new " +
                                            retType.getName() +
                                            "((Object)(" +
@@ -285,16 +278,16 @@ public class ShadowManager {
                         if (!shadowTarget.getDeclaredField(fieldName)
                                 .getType()
                                 .getName()
-                                .equals(tempTargetMap.containsKey(para[0]) ?
-                                        tempTargetMap.get(para[0]).getName() :
+                                .equals(shadowTargetMap.containsKey(para[0].getName()) ?
+                                        shadowTargetMap.get(para[0].getName()).getName() :
                                         para[0].getName()))
                             throw new IllegalArgumentException("Invalid setter");
-                        if (tempTargetMap.containsKey(para[0]))
+                        if (shadowTargetMap.containsKey(para[0].getName()))
                             method.setBody(belong +
                                            '.' +
                                            fieldName +
                                            "=(" +
-                                           tempTargetMap.get(para[0]).getName() +
+                                           shadowTargetMap.get(para[0].getName()).getName() +
                                            ")(((" +
                                            ShadowInterface.class.getName() +
                                            ")$1).getRealObject());");
@@ -334,7 +327,7 @@ public class ShadowManager {
                     iterator.skipSuperConstructor();
                     byte[] orgCode = codeAttribute.getCode();
                     orgCode = Arrays.copyOfRange(orgCode, iterator.next(), orgCode.length);
-                    constructor.setBody("super(" + perfectForward(tempTargetMap, para) + ");");
+                    constructor.setBody("super(" + perfectForward(para) + ");");
                     iterator = codeAttribute.iterator();
                     iterator.skipSuperConstructor();
                     iterator.appendGap(orgCode.length - (iterator.getCodeLength() - iterator.lookAhead()));
@@ -357,12 +350,8 @@ public class ShadowManager {
 
                         CtClass retType = method.getReturnType();
                         if (retType == CtClass.voidType)
-                            method.setBody(belong + '.' +
-                                           methodName +
-                                           '(' +
-                                           perfectForward(tempTargetMap, para) +
-                                           ");");
-                        else if (tempTargetMap.containsKey(retType))
+                            method.setBody(belong + '.' + methodName + '(' + perfectForward(para) + ");");
+                        else if (shadowTargetMap.containsKey(retType.getName()))
                             method.setBody("return new " +
                                            retType.getName() +
                                            "((Object)(" +
@@ -370,16 +359,10 @@ public class ShadowManager {
                                            '.' +
                                            methodName +
                                            '(' +
-                                           perfectForward(tempTargetMap, para) +
+                                           perfectForward(para) +
                                            ")));");
                         else
-                            method.setBody("return " +
-                                           belong +
-                                           '.' +
-                                           methodName +
-                                           '(' +
-                                           perfectForward(tempTargetMap, para) +
-                                           ");");
+                            method.setBody("return " + belong + '.' + methodName + '(' + perfectForward(para) + ");");
                     } else if (method.hasAnnotation(ShadowGetter.class)) {
                         String fieldName = ShadowManager.indexTo(((ShadowGetter) method.getAnnotation(ShadowGetter.class)).value());
                         CtClass retType = method.getReturnType();
@@ -387,11 +370,11 @@ public class ShadowManager {
                             !shadowTarget.getDeclaredField(fieldName)
                                     .getType()
                                     .getName()
-                                    .equals(tempTargetMap.containsKey(retType) ?
-                                            tempTargetMap.get(retType).getName() :
+                                    .equals(shadowTargetMap.containsKey(retType.getName()) ?
+                                            shadowTargetMap.get(retType.getName()).getName() :
                                             retType.getName()))
                             throw new IllegalArgumentException("Invalid getter");
-                        if (tempTargetMap.containsKey(retType))
+                        if (shadowTargetMap.containsKey(retType.getName()))
                             method.setBody("return new " +
                                            retType.getName() +
                                            "((Object)(" +
@@ -409,16 +392,16 @@ public class ShadowManager {
                         if (!shadowTarget.getDeclaredField(fieldName)
                                 .getType()
                                 .getName()
-                                .equals(tempTargetMap.containsKey(para[0]) ?
-                                        tempTargetMap.get(para[0]).getName() :
+                                .equals(shadowTargetMap.containsKey(para[0].getName()) ?
+                                        shadowTargetMap.get(para[0].getName()).getName() :
                                         para[0].getName()))
                             throw new IllegalArgumentException("Invalid setter");
-                        if (tempTargetMap.containsKey(para[0]))
+                        if (shadowTargetMap.containsKey(para[0].getName()))
                             method.setBody(belong +
                                            '.' +
                                            fieldName +
                                            "=(" +
-                                           tempTargetMap.get(para[0]).getName() +
+                                           shadowTargetMap.get(para[0].getName()).getName() +
                                            ")(((" +
                                            ShadowInterface.class.getName() +
                                            ")$1).getRealObject());");
@@ -428,36 +411,36 @@ public class ShadowManager {
                         String targetName = ShadowManager.indexTo(((ShadowOverride) method.getAnnotation(ShadowOverride.class)).value());
                         CtClass retType = method.getReturnType();
                         CtClass[] para = method.getParameterTypes();
-                        CtMethod newMethod = new CtMethod(tempTargetMap.containsKey(retType) ?
-                                                          cp.getCtClass(tempTargetMap.get(retType).getName()) :
+                        if (method.getName().equals(targetName) && Arrays.stream(para).map(CtClass::getName).noneMatch(
+                                shadowTargetMap::containsKey) && !shadowTargetMap.containsKey(retType.getName()))
+                            continue;
+                        CtMethod newMethod = new CtMethod(shadowTargetMap.containsKey(retType.getName()) ?
+                                                          cp.getCtClass(shadowTargetMap.get(retType.getName())
+                                                                                .getName()) :
                                                           retType, targetName + "__internal_override", Arrays.stream(
                                 para).map(cc -> {
                             try {
-                                return tempTargetMap.containsKey(cc) ?
-                                       cp.getCtClass(tempTargetMap.get(cc).getName()) :
+                                return shadowTargetMap.containsKey(cc.getName()) ?
+                                       cp.getCtClass(shadowTargetMap.get(cc.getName()).getName()) :
                                        cc;
                             } catch (NotFoundException e) {
                                 throw new RuntimeException(e);
                             }
                         }).toArray(CtClass[]::new), ctClass);
                         if (retType == CtClass.voidType)
-                            newMethod.setBody(method.getName() + '(' + perfectBackward(tempTargetMap, para) + ");");
-                        else if (tempTargetMap.containsKey(retType))
+                            newMethod.setBody(method.getName() + '(' + perfectBackward(para) + ");");
+                        else if (shadowTargetMap.containsKey(retType.getName()))
                             newMethod.setBody("return (" +
-                                              tempTargetMap.get(retType).getName() +
+                                              shadowTargetMap.get(retType.getName()).getName() +
                                               ")(((" +
                                               ShadowInterface.class.getName() +
                                               ")(" +
                                               method.getName() +
                                               '(' +
-                                              perfectBackward(tempTargetMap, para) +
+                                              perfectBackward(para) +
                                               "))).getRealObject());");
                         else
-                            newMethod.setBody("return " +
-                                              method.getName() +
-                                              '(' +
-                                              perfectBackward(tempTargetMap, para) +
-                                              ");");
+                            newMethod.setBody("return " + method.getName() + '(' + perfectBackward(para) + ");");
                         newMethod.setName(targetName);
                         ctClass.addMethod(newMethod);
                     }
