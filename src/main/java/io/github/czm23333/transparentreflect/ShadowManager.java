@@ -1,20 +1,8 @@
 package io.github.czm23333.transparentreflect;
 
-import io.github.czm23333.transparentreflect.annotations.Shadow;
-import io.github.czm23333.transparentreflect.annotations.ShadowExtend;
-import io.github.czm23333.transparentreflect.annotations.ShadowGetter;
-import io.github.czm23333.transparentreflect.annotations.ShadowOverride;
-import io.github.czm23333.transparentreflect.annotations.ShadowSetter;
+import io.github.czm23333.transparentreflect.annotations.*;
 import io.github.czm23333.transparentreflect.internal.ShadowInterface;
-import javassist.CannotCompileException;
-import javassist.ClassPool;
-import javassist.CtClass;
-import javassist.CtConstructor;
-import javassist.CtField;
-import javassist.CtMethod;
-import javassist.LoaderClassPath;
-import javassist.Modifier;
-import javassist.NotFoundException;
+import javassist.*;
 import javassist.bytecode.CodeAttribute;
 import javassist.bytecode.CodeIterator;
 import javassist.bytecode.MethodInfo;
@@ -25,12 +13,7 @@ import org.reflections.util.ConfigurationBuilder;
 import org.reflections.util.FilterBuilder;
 
 import java.lang.annotation.Annotation;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.function.Consumer;
 
 public class ShadowManager {
@@ -69,10 +52,12 @@ public class ShadowManager {
             return obj;
     }
 
-    private static Set<String> scan(Class<? extends Annotation> annotation, String pack) {
-        Reflections reflections = new Reflections(new ConfigurationBuilder().forPackages(pack)
-                                                          .setInputsFilter(new FilterBuilder().includePackage(pack))
-                                                          .setExpandSuperTypes(false));
+    private static Set<String> scan(Class<? extends Annotation> annotation, ClassLoader cl, String pack) {
+        Reflections reflections = new Reflections(new ConfigurationBuilder().forPackage(pack, cl)
+                                                                            .setInputsFilter(
+                                                                                    new FilterBuilder().includePackage(
+                                                                                            pack))
+                                                                            .setExpandSuperTypes(false));
         return reflections.get(Scanners.SubTypes.of(Scanners.TypesAnnotated.with(annotation)));
     }
 
@@ -136,7 +121,7 @@ public class ShadowManager {
         CtClass shadowInterface = cp.getCtClass(ShadowInterface.class.getName());
         CtClass objectClass = cp.getCtClass(Object.class.getName());
 
-        Set<String> annotated = scan(Shadow.class, packageName);
+        Set<String> annotated = scan(Shadow.class, cl, packageName);
 
         HashMap<CtClass, Class<?>> tempTargetMap = new HashMap<>();
         for (String name : annotated) {
@@ -311,7 +296,7 @@ public class ShadowManager {
             tempClass.remove(cur);
         }
 
-        annotated = scan(ShadowExtend.class, packageName);
+        annotated = scan(ShadowExtend.class, cl, packageName);
         for (String name : annotated) {
             CtClass ctClass = cp.getCtClass(name);
             ShadowExtend shadowAnnotation = (ShadowExtend) ctClass.getAnnotation(ShadowExtend.class);
