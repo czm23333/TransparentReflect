@@ -6,7 +6,7 @@
 
     <groupId>io.github.czm23333</groupId>
     <artifactId>TransparentReflect</artifactId>
-    <version>1.0</version>
+    <version>1.0.1</version>
 
     <properties>
         <maven.compiler.source>16</maven.compiler.source>
