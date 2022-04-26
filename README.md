@@ -6,22 +6,28 @@ With this framework, you can create shadow classes and link them with actual cla
 
 That is, you can achieve what you need reflection to do before in a completely transparent way.
 
-Specifically, this framework supports: 
+Specifically, this framework supports:
 
 1. Use shadow classes to create and access classes and objects transparently.
 
-2. Use shadow classes to extend certain classes to override methods declared in them and access their protected members transparently.
+2. Use shadow classes to extend certain classes to override methods declared in them and access their protected members
+   transparently.
 
 ## Usage
+
 You can find code examples in src/io/github/czm23333/TransparentReflect/example.
 
 For more information, please refer to the code examples.
 
+To add dependency of this framework, see [JitPack](https://jitpack.io/#czm23333/TransparentReflect).
+
 ### Create And Access Classes And Objects
+
 #### Class Defination
+
 To achieve this goal, you need to create a shadow class with a @Shadow annotation describing the actual class you want.
 
-Like this: 
+Like this:
 
 ```java
 @Shadow("Target")
