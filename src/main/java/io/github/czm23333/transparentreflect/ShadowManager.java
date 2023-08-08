@@ -15,19 +15,22 @@ import org.reflections.util.FilterBuilder;
 import java.lang.annotation.Annotation;
 import java.util.*;
 import java.util.function.Consumer;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class ShadowManager {
     public static final Directory root = new Directory();
 
     private static final HashMap<String, Class<?>> shadowTargetMap = new HashMap<>();
 
+    private static final Logger LOGGER = Logger.getLogger("TransparentReflect");
+
     public static Class<?> indexToClass(String path) throws ClassNotFoundException {
         String[] parts = path.split("/");
         StringBuilder result = new StringBuilder();
         Directory curr = root;
         for (String part : parts) {
-            if (!curr.isMark())
-                result.append('.');
+            if (!curr.isMark()) result.append('.');
             curr = curr.hasSubDirectory(part) ? curr.getSubDirectory(part) : new Directory(part);
             result.append(curr.getRealPath());
         }
@@ -46,24 +49,21 @@ public class ShadowManager {
     }
 
     public static Object shadowUnpack(Object obj) {
-        if (obj instanceof ShadowInterface)
-            return ((ShadowInterface) obj).getRealObject();
-        else
-            return obj;
+        if (obj instanceof ShadowInterface) return ((ShadowInterface) obj).getRealObject();
+        else return obj;
     }
 
     private static Set<String> scan(Class<? extends Annotation> annotation, ClassLoader cl, String pack) {
         Reflections reflections = new Reflections(new ConfigurationBuilder().forPackage(pack, cl)
-                                                                            .setInputsFilter(
-                                                                                    new FilterBuilder().includePackage(
-                                                                                            pack))
-                                                                            .setExpandSuperTypes(false));
+                .setInputsFilter(new FilterBuilder().includePackage(pack)).setExpandSuperTypes(false));
         return reflections.get(Scanners.SubTypes.of(Scanners.TypesAnnotated.with(annotation)));
     }
 
-    private static String perfectForward(CtClass[] para) {
+    private static String perfectForward(CtClass[] para) {return perfectForward(para, 1);}
+
+    private static String perfectForward(CtClass[] para, int beginWith) {
         StringBuilder insertCode = new StringBuilder();
-        for (int i = 1; i <= para.length; ++i) {
+        for (int i = beginWith; i <= para.length; ++i) {
             CtClass paraClass = para[i - 1];
             if (shadowTargetMap.containsKey(paraClass.getName())) {
                 insertCode.append('(');
@@ -85,8 +85,7 @@ public class ShadowManager {
                 insertCode.append('$');
                 insertCode.append(i);
             }
-            if (i != para.length)
-                insertCode.append(',');
+            if (i != para.length) insertCode.append(',');
         }
         return insertCode.toString();
     }
@@ -107,13 +106,13 @@ public class ShadowManager {
                 insertCode.append('$');
                 insertCode.append(i);
             }
-            if (i != para.length)
-                insertCode.append(',');
+            if (i != para.length) insertCode.append(',');
         }
         return insertCode.toString();
     }
 
-    public static void initShadow(ClassLoader cl, String packageName, Consumer<CtClass> definer, boolean silent) throws NotFoundException, ClassNotFoundException, CannotCompileException {
+    public static void initShadow(ClassLoader cl, String packageName, Consumer<CtClass> definer,
+            boolean silent) throws NotFoundException, ClassNotFoundException, CannotCompileException {
         ClassPool cp = new ClassPool();
         cp.appendSystemPath();
         cp.appendClassPath(new LoaderClassPath(cl));
@@ -148,8 +147,7 @@ public class ShadowManager {
                     break;
                 }
             }
-            if (flag)
-                ctClass.addConstructor(new CtConstructor(new CtClass[]{objectClass}, ctClass));
+            if (flag) ctClass.addConstructor(new CtConstructor(new CtClass[]{objectClass}, ctClass));
         }
 
         for (Map.Entry<CtClass, Class<?>> shadow : tempTargetMap.entrySet()) {
@@ -159,10 +157,8 @@ public class ShadowManager {
             String defBody = ";";
             CtClass superClass = ctClass.getSuperclass();
             if (superClass != objectClass) {
-                if (superClass.hasAnnotation(Shadow.class))
-                    defBody = "super(null);";
-                else
-                    throw new IllegalArgumentException("Invalid superclass");
+                if (superClass.hasAnnotation(Shadow.class)) defBody = "super(null);";
+                else throw new IllegalArgumentException("Invalid superclass");
             }
             for (CtConstructor constructor : ctClass.getDeclaredConstructors()) {
                 try {
@@ -170,45 +166,33 @@ public class ShadowManager {
 
                     CtClass[] para = constructor.getParameterTypes();
                     if (para.length == 1 && para[0] == objectClass) {
-                        if (Arrays.stream(shadowTarget.getConstructors()).anyMatch(c -> c.getParameterCount() == 1 &&
-                                                                                        c.getParameterTypes()[0] ==
-                                                                                        Object.class))
-                            constructor.insertAfter("if($1 instanceof " +
-                                                    shadowTarget.getName() +
-                                                    ") $0.__realObject = (" +
-                                                    shadowTarget.getName() +
-                                                    ")$1; else $0.__realObject = new " +
-                                                    shadowTarget.getName() +
-                                                    "($1);", true);
-                        else
-                            constructor.insertAfter("if($1 instanceof " +
-                                                    shadowTarget.getName() +
-                                                    ") $0.__realObject = (" +
-                                                    shadowTarget.getName() +
-                                                    ")$1; else $0.__realObject = null;", true);
+                        if (Arrays.stream(shadowTarget.getConstructors())
+                                .anyMatch(c -> c.getParameterCount() == 1 && c.getParameterTypes()[0] == Object.class))
+                            constructor.insertAfter(String.format(
+                                    "if($1 instanceof %s) $0.__realObject = (%s)$1; else $0.__realObject = new %s($1);",
+                                    shadowTarget.getName(), shadowTarget.getName(), shadowTarget.getName()), true);
+                        else constructor.insertAfter(String.format(
+                                "if($1 instanceof %s) $0.__realObject = (%s)$1; else $0.__realObject = null;",
+                                shadowTarget.getName(), shadowTarget.getName()), true);
                     } else {
-                        constructor.insertAfter("$0.__realObject = new " +
-                                                shadowTarget.getName() +
-                                                '(' +
-                                                perfectForward(para) +
-                                                ");", true);
+                        if (constructor.hasAnnotation(DisabledConstructor.class))
+                            constructor.setBody("throw new UnsupportedOperationException();");
+                        else constructor.insertAfter(
+                                String.format("$0.__realObject = new %s(%s);", shadowTarget.getName(),
+                                        perfectForward(para)), true);
                     }
                 } catch (Throwable t) {
                     if (!silent)
-                        t.printStackTrace();
+                        LOGGER.log(Level.SEVERE, t, () -> "Error creating constructor of class " + ctClass.getName());
                     constructor.setBody("throw new UnsupportedOperationException();");
                 }
             }
 
             for (CtMethod method : ctClass.getDeclaredMethods()) {
                 try {
-                    String belong = Modifier.isStatic(method.getModifiers()) ?
-                                    shadowTarget.getName() :
-                                    "((" +
-                                    shadowTarget.getName() +
-                                    ")(((" +
-                                    ShadowInterface.class.getName() +
-                                    ")this).getRealObject()))";
+                    String belong = Modifier.isStatic(method.getModifiers()) ? shadowTarget.getName() :
+                            String.format("((%s)(((%s)this).getRealObject()))", shadowTarget.getName(),
+                                    ShadowInterface.class.getName());
                     if (method.hasAnnotation(Shadow.class)) {
                         Shadow shadowAnnotation = (Shadow) method.getAnnotation(Shadow.class);
 
@@ -217,42 +201,25 @@ public class ShadowManager {
 
                         CtClass retType = method.getReturnType();
                         if (retType == CtClass.voidType)
-                            method.setBody(belong + '.' + methodName + '(' + perfectForward(para) + ");");
-                        else if (shadowTargetMap.containsKey(retType.getName()))
-                            method.setBody("return new " +
-                                           retType.getName() +
-                                           "((Object)(" +
-                                           belong +
-                                           '.' +
-                                           methodName +
-                                           '(' +
-                                           perfectForward(para) +
-                                           ")));");
-                        else
-                            method.setBody("return " + belong + '.' + methodName + '(' + perfectForward(para) + ");");
+                            method.setBody(String.format("%s.%s(%s);", belong, methodName, perfectForward(para)));
+                        else if (shadowTargetMap.containsKey(retType.getName())) method.setBody(
+                                String.format("return new %s((Object)(%s.%s(%s)));", retType.getName(), belong,
+                                        methodName, perfectForward(para)));
+                        else method.setBody(
+                                    String.format("return %s.%s(%s);", belong, methodName, perfectForward(para)));
                     } else if (method.hasAnnotation(ShadowGetter.class)) {
                         ShadowGetter shadowAnnotation = (ShadowGetter) method.getAnnotation(ShadowGetter.class);
 
                         String fieldName = ShadowManager.indexTo(shadowAnnotation.value());
                         CtClass retType = method.getReturnType();
                         if (method.getParameterTypes().length != 0 ||
-                            !shadowTarget.getDeclaredField(fieldName)
-                                    .getType()
-                                    .getName()
+                            !shadowTarget.getDeclaredField(fieldName).getType().getName()
                                     .equals(shadowTargetMap.containsKey(retType.getName()) ?
-                                            shadowTargetMap.get(retType.getName()).getName() :
-                                            retType.getName()))
+                                            shadowTargetMap.get(retType.getName()).getName() : retType.getName()))
                             throw new IllegalArgumentException("Invalid getter");
-                        if (shadowTargetMap.containsKey(retType.getName()))
-                            method.setBody("return new " +
-                                           retType.getName() +
-                                           "((Object)(" +
-                                           belong +
-                                           '.' +
-                                           fieldName +
-                                           "));");
-                        else
-                            method.setBody("return " + belong + '.' + fieldName + ";");
+                        if (shadowTargetMap.containsKey(retType.getName())) method.setBody(
+                                String.format("return new %s((Object)(%s.%s));", retType.getName(), belong, fieldName));
+                        else method.setBody(String.format("return %s.%s;", belong, fieldName));
                     } else if (method.hasAnnotation(ShadowSetter.class)) {
                         ShadowSetter shadowAnnotation = (ShadowSetter) method.getAnnotation(ShadowSetter.class);
 
@@ -260,28 +227,20 @@ public class ShadowManager {
                         if (para.length != 1 || method.getReturnType() != CtClass.voidType)
                             throw new IllegalArgumentException("Invalid setter");
                         String fieldName = ShadowManager.indexTo(shadowAnnotation.value());
-                        if (!shadowTarget.getDeclaredField(fieldName)
-                                .getType()
-                                .getName()
+                        if (!shadowTarget.getDeclaredField(fieldName).getType().getName()
                                 .equals(shadowTargetMap.containsKey(para[0].getName()) ?
-                                        shadowTargetMap.get(para[0].getName()).getName() :
-                                        para[0].getName()))
+                                        shadowTargetMap.get(para[0].getName()).getName() : para[0].getName()))
                             throw new IllegalArgumentException("Invalid setter");
-                        if (shadowTargetMap.containsKey(para[0].getName()))
-                            method.setBody(belong +
-                                           '.' +
-                                           fieldName +
-                                           "=(" +
-                                           shadowTargetMap.get(para[0].getName()).getName() +
-                                           ")(((" +
-                                           ShadowInterface.class.getName() +
-                                           ")$1).getRealObject());");
-                        else
-                            method.setBody(belong + '.' + fieldName + "=$1;");
+                        if (shadowTargetMap.containsKey(para[0].getName())) method.setBody(
+                                String.format("%s.%s=(%s)(((%s)$1).getRealObject());", belong, fieldName,
+                                        shadowTargetMap.get(para[0].getName()).getName(),
+                                        ShadowInterface.class.getName()));
+                        else method.setBody(String.format("%s.%s=$1;", belong, fieldName));
                     }
                 } catch (Throwable t) {
-                    if (!silent)
-                        t.printStackTrace();
+                    if (!silent) LOGGER.log(Level.SEVERE, t,
+                            () -> String.format("Error creating method %s of class %s", method.getName(),
+                                    ctClass.getName()));
                     method.setBody("throw new UnsupportedOperationException();");
                 }
             }
@@ -305,23 +264,27 @@ public class ShadowManager {
 
             for (CtConstructor constructor : ctClass.getDeclaredConstructors()) {
                 try {
-                    CtClass[] para = constructor.getParameterTypes();
-                    MethodInfo methodInfo = constructor.getMethodInfo();
-                    CodeAttribute codeAttribute = methodInfo.getCodeAttribute();
-                    CodeIterator iterator = codeAttribute.iterator();
-                    iterator.skipSuperConstructor();
-                    byte[] orgCode = codeAttribute.getCode();
-                    orgCode = Arrays.copyOfRange(orgCode, iterator.next(), orgCode.length);
-                    constructor.setBody("super(" + perfectForward(para) + ");");
-                    iterator = codeAttribute.iterator();
-                    iterator.skipSuperConstructor();
-                    iterator.appendGap(orgCode.length - (iterator.getCodeLength() - iterator.lookAhead()));
-                    iterator.write(orgCode, iterator.next());
-                    codeAttribute.computeMaxStack();
-                    methodInfo.rebuildStackMap(cp);
+                    if (constructor.hasAnnotation(DisabledConstructor.class))
+                        constructor.setBody("throw new UnsupportedOperationException();");
+                    else {
+                        CtClass[] para = constructor.getParameterTypes();
+                        MethodInfo methodInfo = constructor.getMethodInfo();
+                        CodeAttribute codeAttribute = methodInfo.getCodeAttribute();
+                        CodeIterator iterator = codeAttribute.iterator();
+                        iterator.skipSuperConstructor();
+                        byte[] orgCode = codeAttribute.getCode();
+                        orgCode = Arrays.copyOfRange(orgCode, iterator.next(), orgCode.length);
+                        constructor.setBody("super(" + perfectForward(para) + ");");
+                        iterator = codeAttribute.iterator();
+                        iterator.skipSuperConstructor();
+                        iterator.appendGap(orgCode.length - (iterator.getCodeLength() - iterator.lookAhead()));
+                        iterator.write(orgCode, iterator.next());
+                        codeAttribute.computeMaxStack();
+                        methodInfo.rebuildStackMap(cp);
+                    }
                 } catch (Throwable t) {
                     if (!silent)
-                        t.printStackTrace();
+                        LOGGER.log(Level.SEVERE, t, () -> "Error creating constructor of class " + ctClass.getName());
                     constructor.setBody("throw new UnsupportedOperationException();");
                 }
             }
@@ -331,107 +294,145 @@ public class ShadowManager {
                     String belong = Modifier.isStatic(method.getModifiers()) ? shadowTarget.getName() : "super";
                     if (method.hasAnnotation(Shadow.class)) {
                         CtClass[] para = method.getParameterTypes();
-                        String methodName = ShadowManager.indexTo(((Shadow) method.getAnnotation(Shadow.class)).value());
+                        String methodName = ShadowManager.indexTo(
+                                ((Shadow) method.getAnnotation(Shadow.class)).value());
 
                         CtClass retType = method.getReturnType();
                         if (retType == CtClass.voidType)
-                            method.setBody(belong + '.' + methodName + '(' + perfectForward(para) + ");");
-                        else if (shadowTargetMap.containsKey(retType.getName()))
-                            method.setBody("return new " +
-                                           retType.getName() +
-                                           "((Object)(" +
-                                           belong +
-                                           '.' +
-                                           methodName +
-                                           '(' +
-                                           perfectForward(para) +
-                                           ")));");
-                        else
-                            method.setBody("return " + belong + '.' + methodName + '(' + perfectForward(para) + ");");
+                            method.setBody(String.format("%s.%s(%s);", belong, methodName, perfectForward(para)));
+                        else if (shadowTargetMap.containsKey(retType.getName())) method.setBody(
+                                String.format("return new %s((Object)(%s.%s(%s)));", retType.getName(), belong,
+                                        methodName, perfectForward(para)));
+                        else method.setBody(
+                                    String.format("return %s.%s(%s);", belong, methodName, perfectForward(para)));
                     } else if (method.hasAnnotation(ShadowGetter.class)) {
-                        String fieldName = ShadowManager.indexTo(((ShadowGetter) method.getAnnotation(ShadowGetter.class)).value());
+                        String fieldName = ShadowManager.indexTo(
+                                ((ShadowGetter) method.getAnnotation(ShadowGetter.class)).value());
                         CtClass retType = method.getReturnType();
                         if (method.getParameterTypes().length != 0 ||
-                            !shadowTarget.getDeclaredField(fieldName)
-                                    .getType()
-                                    .getName()
+                            !shadowTarget.getDeclaredField(fieldName).getType().getName()
                                     .equals(shadowTargetMap.containsKey(retType.getName()) ?
-                                            shadowTargetMap.get(retType.getName()).getName() :
-                                            retType.getName()))
+                                            shadowTargetMap.get(retType.getName()).getName() : retType.getName()))
                             throw new IllegalArgumentException("Invalid getter");
-                        if (shadowTargetMap.containsKey(retType.getName()))
-                            method.setBody("return new " +
-                                           retType.getName() +
-                                           "((Object)(" +
-                                           belong +
-                                           '.' +
-                                           fieldName +
-                                           "));");
-                        else
-                            method.setBody("return " + belong + '.' + fieldName + ";");
+                        if (shadowTargetMap.containsKey(retType.getName())) method.setBody(
+                                String.format("return new %s((Object)(%s.%s));", retType.getName(), belong, fieldName));
+                        else method.setBody(String.format("return %s.%s;", belong, fieldName));
                     } else if (method.hasAnnotation(ShadowSetter.class)) {
                         CtClass[] para = method.getParameterTypes();
                         if (para.length != 1 || method.getReturnType() != CtClass.voidType)
                             throw new IllegalArgumentException("Invalid setter");
-                        String fieldName = ShadowManager.indexTo(((ShadowSetter) method.getAnnotation(ShadowSetter.class)).value());
-                        if (!shadowTarget.getDeclaredField(fieldName)
-                                .getType()
-                                .getName()
+                        String fieldName = ShadowManager.indexTo(
+                                ((ShadowSetter) method.getAnnotation(ShadowSetter.class)).value());
+                        if (!shadowTarget.getDeclaredField(fieldName).getType().getName()
                                 .equals(shadowTargetMap.containsKey(para[0].getName()) ?
-                                        shadowTargetMap.get(para[0].getName()).getName() :
-                                        para[0].getName()))
+                                        shadowTargetMap.get(para[0].getName()).getName() : para[0].getName()))
                             throw new IllegalArgumentException("Invalid setter");
-                        if (shadowTargetMap.containsKey(para[0].getName()))
-                            method.setBody(belong +
-                                           '.' +
-                                           fieldName +
-                                           "=(" +
-                                           shadowTargetMap.get(para[0].getName()).getName() +
-                                           ")(((" +
-                                           ShadowInterface.class.getName() +
-                                           ")$1).getRealObject());");
-                        else
-                            method.setBody(belong + '.' + fieldName + "=$1;");
+                        if (shadowTargetMap.containsKey(para[0].getName())) method.setBody(
+                                String.format("%s.%s=(%s)(((%s)$1).getRealObject());", belong, fieldName,
+                                        shadowTargetMap.get(para[0].getName()).getName(),
+                                        ShadowInterface.class.getName()));
+                        else method.setBody(String.format("%s.%s=$1;", belong, fieldName));
                     } else if (method.hasAnnotation(ShadowOverride.class)) {
-                        String targetName = ShadowManager.indexTo(((ShadowOverride) method.getAnnotation(ShadowOverride.class)).value());
+                        String targetName = ShadowManager.indexTo(
+                                ((ShadowOverride) method.getAnnotation(ShadowOverride.class)).value());
                         CtClass retType = method.getReturnType();
                         CtClass[] para = method.getParameterTypes();
-                        if (method.getName().equals(targetName) && Arrays.stream(para).map(CtClass::getName).noneMatch(
-                                shadowTargetMap::containsKey) && !shadowTargetMap.containsKey(retType.getName()))
-                            continue;
+                        if (method.getName().equals(targetName) &&
+                            Arrays.stream(para).map(CtClass::getName).noneMatch(shadowTargetMap::containsKey) &&
+                            !shadowTargetMap.containsKey(retType.getName())) continue;
                         CtMethod newMethod = new CtMethod(shadowTargetMap.containsKey(retType.getName()) ?
-                                                          cp.getCtClass(shadowTargetMap.get(retType.getName())
-                                                                                .getName()) :
-                                                          retType, targetName + "__internal_override", Arrays.stream(
-                                para).map(cc -> {
+                                cp.getCtClass(shadowTargetMap.get(retType.getName()).getName()) : retType,
+                                targetName + "__internal_override", Arrays.stream(para).map(cc -> {
                             try {
                                 return shadowTargetMap.containsKey(cc.getName()) ?
-                                       cp.getCtClass(shadowTargetMap.get(cc.getName()).getName()) :
-                                       cc;
+                                        cp.getCtClass(shadowTargetMap.get(cc.getName()).getName()) : cc;
                             } catch (NotFoundException e) {
                                 throw new RuntimeException(e);
                             }
                         }).toArray(CtClass[]::new), ctClass);
                         if (retType == CtClass.voidType)
-                            newMethod.setBody(method.getName() + '(' + perfectBackward(para) + ");");
-                        else if (shadowTargetMap.containsKey(retType.getName()))
-                            newMethod.setBody("return (" +
-                                              shadowTargetMap.get(retType.getName()).getName() +
-                                              ")(((" +
-                                              ShadowInterface.class.getName() +
-                                              ")(" +
-                                              method.getName() +
-                                              '(' +
-                                              perfectBackward(para) +
-                                              "))).getRealObject());");
+                            newMethod.setBody(String.format("%s(%s);", method.getName(), perfectBackward(para)));
+                        else if (shadowTargetMap.containsKey(retType.getName())) newMethod.setBody(
+                                String.format("return (%s)(((%s)(%s(%s))).getRealObject());",
+                                        shadowTargetMap.get(retType.getName()).getName(),
+                                        ShadowInterface.class.getName(), method.getName(), perfectBackward(para)));
                         else
-                            newMethod.setBody("return " + method.getName() + '(' + perfectBackward(para) + ");");
+                            newMethod.setBody(String.format("return %s(%s);", method.getName(), perfectBackward(para)));
                         newMethod.setName(targetName);
                         ctClass.addMethod(newMethod);
+                    } else if (method.hasAnnotation(ShadowAccessor.class)) {
+                        String methodName = ShadowManager.indexTo(
+                                ((ShadowAccessor) method.getAnnotation(ShadowAccessor.class)).value());
+                        CtClass retType = method.getReturnType();
+                        CtClass[] para = method.getParameterTypes();
+
+                        if (!Modifier.isStatic(method.getModifiers()))
+                            throw new IllegalArgumentException("Accessor method should be static");
+                        if (para.length == 0 || para[0].isPrimitive())
+                            throw new IllegalArgumentException("Illegal accessor parameter list");
+
+                        String methodBelong = shadowTargetMap.containsKey(para[0].getName()) ?
+                                String.format("((%s)(((%s)$1).getRealObject()))",
+                                        shadowTargetMap.get(para[0].getName()).getName(),
+                                        ShadowInterface.class.getName()) : "$1";
+
+                        if (retType == CtClass.voidType) method.setBody(
+                                String.format("%s.%s(%s);", methodBelong, methodName, perfectForward(para, 2)));
+                        else if (shadowTargetMap.containsKey(retType.getName())) method.setBody(
+                                String.format("return new %s((Object)(%s.%s(%s)));", retType.getName(), methodBelong,
+                                        methodName, perfectForward(para, 2)));
+                        else method.setBody(String.format("return %s.%s(%s);", methodBelong, methodName,
+                                    perfectForward(para, 2)));
+                    } else if (method.hasAnnotation(ShadowAccessorGetter.class)) {
+                        String fieldName = ShadowManager.indexTo(
+                                ((ShadowAccessorGetter) method.getAnnotation(ShadowAccessorGetter.class)).value());
+                        CtClass retType = method.getReturnType();
+                        CtClass[] para = method.getParameterTypes();
+
+                        if (!Modifier.isStatic(method.getModifiers()))
+                            throw new IllegalArgumentException("Accessor method should be static");
+                        if (para.length != 1 || para[0].isPrimitive())
+                            throw new IllegalArgumentException("Illegal accessor parameter list");
+                        if (retType == CtClass.voidType)
+                            throw new IllegalArgumentException("Illegal accessor return type");
+
+                        String fieldBelong = shadowTargetMap.containsKey(para[0].getName()) ?
+                                String.format("((%s)(((%s)$1).getRealObject()))",
+                                        shadowTargetMap.get(para[0].getName()).getName(),
+                                        ShadowInterface.class.getName()) : "$1";
+
+                        if (shadowTargetMap.containsKey(retType.getName())) method.setBody(
+                                String.format("return new %s((Object)(%s.%s));", retType.getName(), fieldBelong,
+                                        fieldName));
+                        else method.setBody(String.format("return %s.%s;", fieldBelong, fieldName));
+                    } else if (method.hasAnnotation(ShadowAccessorSetter.class)) {
+                        String fieldName = ShadowManager.indexTo(
+                                ((ShadowAccessorSetter) method.getAnnotation(ShadowAccessorSetter.class)).value());
+                        CtClass retType = method.getReturnType();
+                        CtClass[] para = method.getParameterTypes();
+
+                        if (!Modifier.isStatic(method.getModifiers()))
+                            throw new IllegalArgumentException("Accessor method should be static");
+                        if (para.length != 2 || para[0].isPrimitive())
+                            throw new IllegalArgumentException("Illegal accessor parameter list");
+                        if (retType != CtClass.voidType)
+                            throw new IllegalArgumentException("Illegal accessor return type");
+
+                        String fieldBelong = shadowTargetMap.containsKey(para[0].getName()) ?
+                                String.format("((%s)(((%s)$1).getRealObject()))",
+                                        shadowTargetMap.get(para[0].getName()).getName(),
+                                        ShadowInterface.class.getName()) : "$1";
+
+                        if (shadowTargetMap.containsKey(para[1].getName())) method.setBody(
+                                String.format("%s.%s=(%s)(((%s)$2).getRealObject());", fieldBelong, fieldName,
+                                        shadowTargetMap.get(para[0].getName()).getName(),
+                                        ShadowInterface.class.getName()));
+                        else method.setBody(String.format("%s.%s=$2;", fieldBelong, fieldName));
                     }
                 } catch (Throwable t) {
-                    if (!silent)
-                        t.printStackTrace();
+                    if (!silent) LOGGER.log(Level.SEVERE, t,
+                            () -> String.format("Error creating method %s of class %s", method.getName(),
+                                    ctClass.getName()));
                     method.setBody("throw new UnsupportedOperationException();");
                 }
             }
@@ -439,21 +440,24 @@ public class ShadowManager {
         }
     }
 
-    public static void initShadow(ClassLoader cl, String packageName, Consumer<CtClass> definer) throws NotFoundException, CannotCompileException, ClassNotFoundException {
+    public static void initShadow(ClassLoader cl, String packageName,
+            Consumer<CtClass> definer) throws NotFoundException, CannotCompileException, ClassNotFoundException {
         initShadow(cl, packageName, definer, false);
     }
 
-    public static void initShadow(Class<?> neighbor, boolean silent) throws NotFoundException, CannotCompileException, ClassNotFoundException {
+    public static void initShadow(Class<?> neighbor,
+            boolean silent) throws NotFoundException, CannotCompileException, ClassNotFoundException {
         initShadow(neighbor.getClassLoader(), neighbor.getPackage().getName(), cc -> {
             try {
                 DefineClassHelper.toClass(cc.getName(), neighbor, neighbor.getClassLoader(), null, cc.toBytecode());
             } catch (Exception e) {
-                e.printStackTrace();
+                LOGGER.log(Level.SEVERE, e, () -> "Error defining class " + cc.getName());
             }
         }, silent);
     }
 
-    public static void initShadow(Class<?> neighbor) throws NotFoundException, CannotCompileException, ClassNotFoundException {
+    public static void initShadow(
+            Class<?> neighbor) throws NotFoundException, CannotCompileException, ClassNotFoundException {
         initShadow(neighbor, false);
     }
 
@@ -461,12 +465,13 @@ public class ShadowManager {
      * It doesn't work on Java 16 and higher.
      */
     @Deprecated
-    public static void initShadow(ClassLoader cl, String packageName, boolean silent) throws NotFoundException, CannotCompileException, ClassNotFoundException {
+    public static void initShadow(ClassLoader cl, String packageName,
+            boolean silent) throws NotFoundException, CannotCompileException, ClassNotFoundException {
         initShadow(cl, packageName, cc -> {
             try {
                 cc.toClass(cl, null);
             } catch (CannotCompileException e) {
-                e.printStackTrace();
+                LOGGER.log(Level.SEVERE, e, () -> "Error defining class " + cc.getName());
             }
         }, silent);
     }
@@ -475,7 +480,8 @@ public class ShadowManager {
      * It doesn't work on Java 16 and higher.
      */
     @Deprecated
-    public static void initShadow(ClassLoader cl, String packageName) throws NotFoundException, CannotCompileException, ClassNotFoundException {
+    public static void initShadow(ClassLoader cl,
+            String packageName) throws NotFoundException, CannotCompileException, ClassNotFoundException {
         initShadow(cl, packageName, false);
     }
 }

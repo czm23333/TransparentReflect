@@ -25,6 +25,12 @@ public class Main {
         extend.s1(5);
         System.out.println(extend.s2());
 
+        System.out.println(ShadowRefAcccessor.getI4(shadow));
+        ShadowRefAcccessor.setI4(shadow, 10);
+        System.out.println(ShadowRefAcccessor.getI4(shadow));
+
+        System.out.println(ShadowRefAcccessor.accD(shadow));
+
         ShadowExtendRef2 extend2 = new ShadowExtendRef2();
         new ShadowRef2(extend2).m1(new ShadowRef(1)).m1();
     }

@@ -38,7 +38,12 @@ Then you can add shadow methods using @Shadow, shadow getters using @ShadowGette
 
 Shadow classes can extend each other if their actual classes also match those relationships.
 
-Note that shadow methods, getters, setters and constructors must have correct signatures. That is, their return type and parameters must be equal to those of actual methods. (however there are some exceptions: each of those types can be the shadow type of the actual one and they'll be automatically transformed at runtime)
+Note that shadow methods, getters, setters and constructors must have correct signatures. That is, their return type and
+parameters must be equal to those of actual methods. (however there are some exceptions: each of those types can be the
+shadow type of the actual one, and they'll be automatically transformed at runtime)
+
+If your constructor cannot satisfy that requirement but declaring it is a must for compilation, you can use
+@DisabledConstructor to disable it at runtime.
 
 #### Access Existing Objects
 No matter whether you've defined a shadow constructor with only one *Object* parameter or not, there'll be one at runtime.
@@ -49,6 +54,9 @@ This constructor has a special function: when you pass an instance of the actual
 You need to create a shadow class with a @ShadowExtend annotation instead of a @Shadow annotation.
 
 Then declare shadow override methods with @ShadowOverride annotations to override methods declared in the actual class.
+
+@ShadowAccessor, @ShadowAccessorGetter and @ShadowAccessorSetter are now available to provide access to protected
+members of existing objects.
 
 You can still use @Shadow, @ShadowGetter and @ShadowSetter. They can access protected members now.
 
